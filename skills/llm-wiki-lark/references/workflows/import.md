@@ -108,7 +108,7 @@ create 模式下，raw/ 子目录由 init 时用户自定义，从 INDEX 目录�
   - 工具输出 JSON 到 stdout，日志输出到 stderr
   - 解析 JSON 输出，提取：
     - `title` → 记录 TITLE（用户可覆盖）
-    - `markdown` → 完整 Markdown 正文（已含媒体占位）
+    - `markdown` → 完整 Markdown 正文（保留媒体引用在正文中的位置）
     - `media` → MEDIA_LIST，每项含 `{ type, index, alt, originalUrl, localPath, success }`（type 为 `image`/`video`/`audio`）
     - `stats` → `{ charCount, paragraphCount, imageCount, videoCount, audioCount }`
     - `outputDir` → 媒体文件本地保存目录（默认 `./output/webclips/<slug>/`）
@@ -117,7 +117,7 @@ create 模式下，raw/ 子目录由 init 时用户自定义，从 INDEX 目录�
   - 若不需要下载媒体文件，可加 `--no-images` 跳过
 - **向用户展示内容预览**（标题 + 字符数/段落数统计 + 媒体数量 + 前 3 段），确认抓取内容符合预期后再创建文档
   - 若抓取内容明显不完整（字符数异常少、缺少预期章节），提示用户考虑手动复制后走分支 B
-- 从 webclip-cli 输出的 `markdown` 中，将图片 `![alt](images/img_NNN.ext)` 替换为行内占位符 `[图N: alt]`，将视频/音频标签替换为 `[视频N]` / `[音频N]`，标记媒体在原文的位置
+- **默认保留图片原位**：从 `markdown` 按出现顺序将正文图片与 MEDIA_LIST 对齐，记录图片前后的正文块和图注。把已下载的图片引用在原处改为 `![原 alt](@./相对路径/图片.ext)`，路径相对于执行 `lark-cli` 的目录。飞书图片是块级元素，必要时将图前、图后文字分成相邻块，保留文字顺序与图注。正文分块时保持图片引用完整及原有顺序。视频/音频标签仍以 `[视频N]` / `[音频N]` 标记原位置。
 - 在 raw/ 对应子目录创建飞书文档：参照 `adapter/<STORAGE_TYPE>.md`「创建文档」执行对应命令
   - `+create --title "<TITLE>" --parent-token <TARGET_TOKEN> --doc-format markdown --content ""` 仅创建标题骨架，从 `.data.document.document_id` 读取 RAW_DOC_ID、从 `.data.document.url` 读取 DOC_URL
   - 正文（来源注释 + 完整正文）按 **≤ 4000 字符/块** 分块，循环用 `+update --as user --doc <RAW_DOC_ID> --command append --doc-format markdown --content -` 追加，直到全部内容写入完毕；长内容/含特殊字符的块用 stdin + 带单引号 heredoc 传入
@@ -128,23 +128,11 @@ create 模式下，raw/ 子目录由 init 时用户自定义，从 INDEX 目录�
   > **抓取时间**: <ISO_DATE>
   ```
 - 后续媒体写入和引用使用创建阶段已记录的 RAW_DOC_ID；不要从 update 返回值提取新文档 ID
-- **媒体写入**（文本全部写入后，逐项处理 MEDIA_LIST 中 `success: true` 的媒体）：
-  - 图片（`type: "image"`）：
-    ```
-    lark-cli docs +media-insert --as user --doc <RAW_DOC_ID> \
-      --file <localPath> --caption "图N: <alt text>"
-    ```
-  - 视频/音频（`type: "video"` / `type: "audio"`）：
-    ```
-    lark-cli docs +media-insert --as user --doc <RAW_DOC_ID> \
-      --file <localPath> --type file
-    ```
-  - **禁止用 `drive +upload` + 文档引用处理媒体**——那只会创建文件附件卡片，无法内嵌显示
-  - 对 MEDIA_LIST 中 `success: false` 的项，在文档末尾追加文本兜底：
-    ```markdown
-    **[图N/视频N/音频N 下载失败]** alt: <alt text> | 原始地址: <originalUrl>
-    ```
-  - 所有媒体处理完后删除 webclip-cli 输出目录：`rm -rf <outputDir>`
+- **图片补写与验收**：正文写入后用 `docs +fetch --as user --doc <RAW_DOC_ID> --doc-format xml --detail with-ids` 回读。按原文逐图核对数量、顺序、相邻正文与图注。仅对缺失图片按相邻正文块补写，有本地图片时可用 `docs +update --command block_insert_after --block-id <前一块ID> --doc-format xml` 插入 `<img path="@./相对路径/图片.ext"/>`。先回读定位，避免重复插入。
+  - 如果当前工具只能用 `docs +media-insert` 上传到文末，上传后回读取得图片块 ID，再用 `docs +update --command block_move_after --block-id <原位置锚点ID> --src-block-ids <图片块ID>` 将图片移到对应位置。验证图片到位后再清除临时图号。文末集中堆放图片不能作为原位归档完成结果。
+  - 图片确实无法取得或插入时，在其原位置保留原始图片链接和可用的替代文字，说明缺失图片及原因。图片区段无法回读核实时，报告未核实的范围。
+- **视频/音频**：对成功下载的媒体用 `docs +media-insert --as user --doc <RAW_DOC_ID> --file <localPath> --type file` 写入。下载失败时保留原始地址和失败说明。
+- 回读核对正文和媒体后，清理本次剪藏输出目录。
 - 记录 RAW_REFERENCE = `<cite type="doc" doc-id="<RAW_DOC_ID>"></cite>`
 
 ### 步骤 4：向用户展示操作结果
