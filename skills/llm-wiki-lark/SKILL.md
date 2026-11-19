@@ -47,7 +47,7 @@ Step 2: 检查认证
 | 操作 | 说明 | 详细步骤 |
 |------|------|---------|
 | **init** | 创建完整目录树 + AGENTS.md + INDEX + LOG | [init.md](references/workflows/init.md) |
-| **import** | 将素材（飞书文档/本地文件/外部链接）归档到 raw/ 对应子目录 | [import.md](references/workflows/import.md) |
+| **import** | 将素材归档到 raw/ 对应子目录。归档网页时默认保留正文图片在原文中的位置与顺序 | [import.md](references/workflows/import.md) |
 | **ingest** | 从 raw/ 读取素材 → 创建 Source/Entity/Concept 页面 → 维护交叉引用 | [ingest.md](references/workflows/ingest.md) |
 | **query** | 从 INDEX 定位 → fetch 相关页面 → 综合回答 → 有价值的回答归档回流 | [query.md](references/workflows/query.md) |
 | **lint** | 检查矛盾、孤立页、断链等 → 生成报告 → 用户确认后修复 | [lint.md](references/workflows/lint.md) |
